@@ -5,12 +5,12 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
     <packaging>bundle</packaging>
-    <name>noisemodelling-jdbc</name>
-    <artifactId>noisemodelling-jdbc</artifactId>
+    <name>noisemodelling-main</name>
+    <artifactId>noisemodelling-main</artifactId>
     <parent>
         <groupId>org.orbisgis</groupId>
         <artifactId>noisemodelling-parent</artifactId>
-        <version>3.3.2-SNAPSHOT</version>
+        <version>3.4-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <description>Compute sound propagation rays.</description>

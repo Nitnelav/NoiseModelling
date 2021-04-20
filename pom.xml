@@ -5,7 +5,7 @@
     <name>noisemodelling-parent</name>
     <artifactId>noisemodelling-parent</artifactId>
     <groupId>org.orbisgis</groupId>
-    <version>3.3.2-SNAPSHOT</version>
+    <version>3.4-SNAPSHOT</version>
     <description>NoiseModelling is an extension of H2GIS</description>
     <organization>
         <name>Lab-STICC - UMR CNRS 6285</name>
@@ -30,7 +30,7 @@
         <module>noisemodelling-emission</module>
         <module>noisemodelling-pathfinder</module>
         <module>noisemodelling-propagation</module>
-        <module>noisemodelling-jdbc</module>
+        <module>noisemodelling-main</module>
         <module>noisemodelling-tutorial-01</module>
         <module>h2gis-extension</module>
     </modules>
