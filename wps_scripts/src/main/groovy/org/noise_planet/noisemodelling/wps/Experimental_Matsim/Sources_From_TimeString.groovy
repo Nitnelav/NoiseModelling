@@ -17,64 +17,17 @@ package org.noise_planet.noisemodelling.wps.Experimental_Matsim
 
 import geoserver.GeoServer
 import geoserver.catalog.Store
-import groovy.sql.Sql
 import org.geotools.jdbc.JDBCDataStore
-import org.h2gis.utilities.wrapper.ConnectionWrapper
-import org.slf4j.Logger
-import org.slf4j.LoggerFactory
 
 import java.sql.Connection
 
-title = 'Create a SOURCE table from imported MATSim tables'
-description = 'Create a ROADS table from imported MATSim tables, for a specific timeString' +
-        '<br/>The timeString can be "D", "E", "N" for DEN analysis or "0h15_0h30" ofr example for 15minutes analysis.' +
-        '<br/>The resulting table will contain the following fields :' +
-        '<br/><br/> - '
+script = new org.noise_planet.noisemodelling.main.experimental_matsim.Sources_From_TimeString()
 
-inputs = [
-    roadsTableName: [
-        name: 'Table name of the MATSIM table containing the roads geometries',
-        title: 'Table name of the MATSIM table containing the roads geometries',
-        description: 'Table name of the MATSIM table containing the roads geometries' +
-                '<br/>The table must contain the following fields : (PK, LINK_ID, THE_GEOM)',
-        type: String.class
-    ],
-    statsTableName: [
-        name: 'Table name of the MATSIM table containing the roads LW stats per timeString',
-        title: 'Table name of the MATSIM table containing the roads LW stats per timeString',
-        description: 'Table name of the MATSIM table containing the roads LW stats per timeString' +
-                '<br/>The table must contain the following fields : ' +
-                '<br/>(PK, LINK_ID, LW63, LW125, LW250, LW500, LW1000, LW2000, LW4000, LW8000, TIMESTRING)' +
-                '<br/>default : roadsTableName + "_STATS"',
-        min: 0,
-        max: 1,
-        type: String.class
-    ],
-    timeString: [
-        name: 'TIMESTRING Field value',
-        title: 'TIMESTRING Field value',
-        description: 'TIMESTRING Field value' +
-            '<br/>The timeString can be "D", "E", "N" for DEN analysis, "12_14" for example for hour analysis or "0h15_0h30" for example for 15minutes analysis.',
-        type: String.class
-    ],
-    outTableName: [
-        name: 'Output table name',
-        title: 'Output table name',
-        description: 'Output table name' +
-                '<br/>The table will contain the following fields :' +
-                '<br/>(PK, THE_GEOM, LW63, LW125, LW250, LW500, LW1000, LW2000, LW4000, LW8000)',
-        type: String.class
-    ]
-]
+title = script.getTitle()
+description = script.getDescription()
 
-outputs = [
-    result: [
-        name: 'Result output string',
-        title: 'Result output string',
-        description: 'This type of result does not allow the blocks to be linked together.',
-        type: String.class
-    ]
-]
+inputs = script.getInputs()
+outputs = script.getOutputs()
 
 static Connection openGeoserverDataStoreConnection(String dbName) {
     if (dbName == null || dbName.isEmpty()) {
@@ -85,56 +38,16 @@ static Connection openGeoserverDataStoreConnection(String dbName) {
     return jdbcDataStore.getDataSource().getConnection()
 }
 
-
 def run(input) {
 
     // Get name of the database
+    // by default an embedded h2gis database is created
+    // Advanced user can replace this database for a postGis or h2Gis server database.
     String dbName = "h2gisdb"
 
     // Open connection
     openGeoserverDataStoreConnection(dbName).withCloseable {
         Connection connection ->
-            return [result: exec(connection, input)]
+            return [result: script.exec(connection, input)]
     }
-}
-
-// main function of the script
-def exec(Connection connection, input) {
-
-    connection = new ConnectionWrapper(connection)
-
-    Sql sql = new Sql(connection)
-
-    String resultString = null
-
-    Logger logger = LoggerFactory.getLogger("org.noise_planet.noisemodelling")
-    logger.info('Start : Create_Sources_Matsim_From_TimeString')
-    logger.info("inputs {}", input)
-
-    String roadsTableName = input["roadsTableName"] as String;
-    String statsTableName =  roadsTableName + "_STATS";
-    if (input["statsTableName"]) {
-        statsTableName = input["statsTableName"] as String;
-    }
-    String timeString = input["timeString"] as String;
-    String outTableName = input["outTableName"] as String;
-
-    sql.execute("DROP TABLE IF EXISTS " + outTableName)
-    sql.execute("CREATE TABLE " + outTableName + '''( 
-        PK integer PRIMARY KEY, 
-        THE_GEOM geometry,
-        LW63 double precision, LW125 double precision, LW250 double precision, LW500 double precision, LW1000 double precision, LW2000 double precision, LW4000 double precision, LW8000 double precision,
-    );''')
-
-    sql.execute("MERGE INTO " + outTableName + '''
-        SELECT R.PK PK, R.THE_GEOM THE_GEOM,
-        S.LW63, S.LW125, S.LW250, S.LW500, S.LW1000, S.LW2000, S.LW4000, S.LW8000
-        FROM ''' + roadsTableName + ''' R, ''' + statsTableName + ''' S
-        WHERE R.LINK_ID = S.LINK_ID AND S.TIMESTRING = \'''' + timeString + '''\';
-    ''')
-
-    logger.info('End : Create_Sources_Matsim_From_TimeString')
-    resultString = outTableName + " created.";
-    logger.info('Result : ' + resultString)
-    return resultString;
 }

@@ -21,49 +21,18 @@ package org.noise_planet.noisemodelling.wps.Database_Manager
 import geoserver.GeoServer
 import geoserver.catalog.Store
 import org.geotools.jdbc.JDBCDataStore
-import org.h2gis.utilities.JDBCUtilities
-import org.h2gis.utilities.SFSUtilities
-import org.h2gis.utilities.TableLocation
 import org.locationtech.jts.geom.Geometry
-import org.locationtech.jts.geom.GeometryFactory
-import org.locationtech.jts.io.WKTWriter
-import org.slf4j.Logger
-import org.slf4j.LoggerFactory
+import org.locationtech.jts.io.WKBReader
 
 import java.sql.Connection
-import java.sql.ResultSet
-import java.sql.Statement
 
-title = 'Diplay a table on a map.'
-description = 'Display a table containing a geometric field on a map. </br> Technically, it groups all the geometries of a table and returns them in WKT OGC format. </br> Be careful, this treatment can be blocking if the table is large.'
+script = new org.noise_planet.noisemodelling.main.database_manager.Table_Visualization_Map()
 
-inputs = [
-        inputSRID: [
-                name       : 'Projection identifier',
-                title      : 'Projection identifier',
-                description: 'Original projection identifier (also called SRID) of your table. It should be an EPSG code, a integer with 4 or 5 digits (ex: 3857 is Web Mercator projection). ' +
-                        '</br>  All coordinates will be projected from the specified EPSG to WGS84 coordinates. ' +
-                        '</br> This entry is optional because many formats already include the projection and you can also import files without geometry attributes.' +
-                        '</br>  <b> Default value : 4326 </b> ',
-                type       : Integer.class,
-                min        : 0, max: 1
-        ],
-        tableName: [
-                name       : 'Name of the table',
-                title      : 'Name of the table',
-                description: 'Name of the table you want to display.',
-                type       : String.class
-        ]
-]
+title = script.getTitle()
+description = script.getDescription()
 
-outputs = [
-        result: [
-                name: 'Result output geometry',
-                title: 'Result output geometry',
-                description: 'This is the output geometry in WKT OGC format',
-                type: Geometry.class
-        ]
-]
+inputs = script.getInputs()
+outputs = script.getOutputs()
 
 static Connection openGeoserverDataStoreConnection(String dbName) {
     if (dbName == null || dbName.isEmpty()) {
@@ -74,80 +43,6 @@ static Connection openGeoserverDataStoreConnection(String dbName) {
     return jdbcDataStore.getDataSource().getConnection()
 }
 
-def exec(Connection connection, input) {
-
-    // output geometry, the information given back to the user
-    Geometry geom = null
-
-    // Create a connection statement to interact with the database in SQL
-    Statement stmt = connection.createStatement()
-
-    // Create a logger to display messages in the geoserver logs and in the command prompt.
-    Logger logger = LoggerFactory.getLogger("org.noise_planet.noisemodelling")
-
-    // print to command window
-    logger.info('Start : Display a table on a map')
-    logger.info("inputs {}", input) // log inputs of the run
-
-    // Get name of the table
-    String tableName = input["tableName"] as String
-    // do it case-insensitive
-    tableName = tableName.toUpperCase()
-
-    // Default SRID (WGS84)
-    Integer srid = 4326
-    // Get user SRID
-    if (input['inputSRID']) {
-        srid = input['inputSRID'] as Integer
-    }
-
-    // Read Geometry Index and type of the table
-    List<String> spatialFieldNames = SFSUtilities.getGeometryFields(connection, TableLocation.parse(tableName, JDBCUtilities.isH2DataBase(connection.getMetaData())))
-
-    // If the table does not contain a geometry field
-    if (spatialFieldNames.isEmpty()) {
-        throw new Exception("The table does not contain a geometry field")
-    }
-
-    // Get the SRID of the table
-    Integer tableSrid = SFSUtilities.getSRID(connection, TableLocation.parse(tableName))
-
-    if (tableSrid != 0 && tableSrid != srid && input['inputSRID']) throw new Exception("The table already has a different SRID than the one you gave.")
-
-    // Replace default SRID by the srid of the table
-    if (tableSrid != 0) srid = tableSrid
-
-    // Display the actual SRID in the command window
-    logger.info("The actual SRID of the table is " + srid)
-
-    if (tableSrid == 0) {
-        connection.createStatement().execute(String.format("UPDATE %s SET " + spatialFieldNames.get(0) + " = ST_SetSRID(" + spatialFieldNames.get(0) + ",%d)",
-                TableLocation.parse(tableName).toString(), srid))
-    }
-
-    // Project geometry in WGS84 (EPSG:4326) and groups all the geometries of the table
-    String geomField = "ST_ACCUM(ST_TRANSFORM(" + spatialFieldNames.get(0) + " ,4326))"
-    ResultSet rs = stmt.executeQuery(String.format("select %s " + spatialFieldNames.get(0) + " from %s", geomField, tableName))
-
-    // Get the geometry field from the table
-    while (rs.next()) {
-        geom = (Geometry) rs.getObject(1)
-    }
-
-    // print to command window
-    if (asWKT(geom).size() > 100) {
-        logger.info('Result (100 first characters) : ' + asWKT(geom).substring(0, 100) + '...')
-    } else {
-        logger.info('Result : ' + asWKT(geom))
-    }
-
-    logger.info('End : Display a table on a map')
-
-    // print to WPS Builder
-    return geom
-}
-
-
 def run(input) {
 
     // Get name of the database
@@ -155,22 +50,11 @@ def run(input) {
     // Advanced user can replace this database for a postGis or h2Gis server database.
     String dbName = "h2gisdb"
 
+
     // Open connection
     openGeoserverDataStoreConnection(dbName).withCloseable {
         Connection connection ->
-            return [result: exec(connection, input)]
+            Geometry geometry = new WKBReader().read(script.exec(connection, input));
+            return [result: geometry]
     }
-}
-
-/**
- * Convert a Geometry value into a Well Known Text value.
- * @param geometry Geometry instance
- * @return The String representation
- */
-static String asWKT(Geometry geometry) {
-    if (geometry == null) {
-        return null
-    }
-    WKTWriter wktWriter = new WKTWriter()
-    return wktWriter.write(geometry)
 }
