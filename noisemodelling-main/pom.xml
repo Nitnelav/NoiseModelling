@@ -13,12 +13,13 @@
         <version>3.4-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
-    <description>Compute sound propagation rays.</description>
+    <description>Main scripts for the NoiseModelling project.</description>
     <dependencies>
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
-            <version>4.13.1</version>
+            <version>4.12</version>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>commons-collections</groupId>
@@ -42,9 +43,24 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.orbisgis</groupId>
+            <artifactId>h2gis-extension</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>${jts-core-groupId}</groupId>
             <artifactId>jts-core</artifactId>
             <version>${jts-core-version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.orbisgis</groupId>
+            <artifactId>h2gis</artifactId>
+            <version>${h2gis-version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.orbisgis</groupId>
+            <artifactId>h2gis-api</artifactId>
+            <version>${h2gis-version}</version>
         </dependency>
         <dependency>
             <groupId>org.orbisgis</groupId>
@@ -57,15 +73,14 @@
             <version>0.1.2</version>
         </dependency>
         <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-            <scope>test</scope>
-            <version>2.9.10.7</version>
-        </dependency>
-        <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-math3</artifactId>
             <version>3.6.1</version>
+        </dependency>
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.6</version>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
@@ -83,6 +98,22 @@
             <version>1.5.2</version>
         </dependency>
         <dependency>
+            <groupId>org.codehaus.groovy</groupId>
+            <artifactId>groovy-all</artifactId>
+            <version>3.0.5</version>
+            <type>pom</type>
+        </dependency>
+        <dependency>
+            <groupId>org.openstreetmap.osmosis</groupId>
+            <artifactId>osmosis-core</artifactId>
+            <version>0.48.3</version>
+        </dependency>
+        <dependency>
+            <groupId>org.openstreetmap.osmosis</groupId>
+            <artifactId>osmosis-pbf</artifactId>
+            <version>0.48.3</version>
+        </dependency>
+        <dependency>
             <groupId>${project.groupId}</groupId>
             <artifactId>h2gis</artifactId>
             <version>${h2gis-version}</version>
@@ -92,9 +123,22 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
             <version>1.6.4</version>
-            <scope>test</scope>
         </dependency>
-
+        <dependency>
+            <groupId>org.matsim</groupId>
+            <artifactId>matsim</artifactId>
+            <version>11.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.11.1</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+            <version>2.11.1</version>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
@@ -112,6 +156,13 @@
                     </execution>
                 </executions>
             </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>2.22.0</version>
+            </plugin>
+
             <plugin>
                 <groupId>org.apache.felix</groupId>
                 <artifactId>maven-bundle-plugin</artifactId>
@@ -119,7 +170,7 @@
                 <extensions>true</extensions>
                 <configuration>
                     <instructions>
-                        <Public-Package>org.noise_planet.noisemodelling.jdbc.*</Public-Package>
+                        <Public-Package>org.noise_planet.noisemodelling.main.*</Public-Package>
                         <Bundle-Vendor>IFSTTAR, IRSTV - FR CNRS 2488</Bundle-Vendor>
                         <Import-Package>org.slf4j;version="[1.6.0,2)",!org.h2.*,*</Import-Package>
                     </instructions>
@@ -128,11 +179,28 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.0</version>
+                <version>3.8.1</version>
                 <configuration>
                     <source>8</source>
                     <target>8</target>
+                    <compilerId>groovy-eclipse-compiler</compilerId>
+                    <compilerArguments>
+                        <indy/>
+                    </compilerArguments>
+                    <failOnWarning>false</failOnWarning>
                 </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.codehaus.groovy</groupId>
+                        <artifactId>groovy-eclipse-compiler</artifactId>
+                        <version>3.7.0</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.codehaus.groovy</groupId>
+                        <artifactId>groovy-eclipse-batch</artifactId>
+                        <version>3.0.8-01</version>
+                    </dependency>
+                </dependencies>
             </plugin>
         </plugins>
     </build>
