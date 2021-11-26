@@ -25,8 +25,8 @@ import org.h2gis.utilities.wrapper.ConnectionWrapper;
 import org.locationtech.jts.geom.Geometry
 import org.locationtech.jts.geom.GeometryCollection;
 import org.locationtech.jts.geom.GeometryFactory;
-import org.locationtech.jts.geom.Coordinate;
-
+import org.locationtech.jts.geom.Coordinate
+import org.locationtech.jts.io.WKTReader;
 import org.openstreetmap.osmosis.core.container.v0_6.EntityContainer;
 import org.openstreetmap.osmosis.core.container.v0_6.NodeContainer;
 import org.openstreetmap.osmosis.core.container.v0_6.RelationContainer;
@@ -43,6 +43,7 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory;
 
 import java.sql.Connection
+import java.text.ParseException
 
 title = 'Import BUILDINGS, GROUND and ROADS tables from OSM'
 description = 'Convert PBF file (https://wiki.openstreetmap.org/wiki/PBF_Format) to input tables. ' +
@@ -199,9 +200,20 @@ def exec(Connection connection, input) {
         removeTunnels = input['removeTunnels'] as Boolean
     }
 
+    Geometry fence = null
+    if ('fence' in input) {
+        WKTReader wktReader = new WKTReader()
+        try {
+            fence = wktReader.read(input['fence'] as String)
+        }
+        catch (ParseException e) {
+            logger.warn("Fence WTK parse error : " + input['fence'] as String)
+        }
+    }
+
     InputStream inputStream = new FileInputStream(pathFile);
     OsmosisReader reader = new OsmosisReader(inputStream);
-    OsmHandler handler = new OsmHandler(logger, ignoreBuilding, ignoreRoads, ignoreGround, removeTunnels)
+    OsmHandler handler = new OsmHandler(logger, ignoreBuilding, ignoreRoads, ignoreGround, removeTunnels, fence)
     reader.setSink(handler);
     reader.run();
 
@@ -218,6 +230,9 @@ def exec(Connection connection, input) {
         );''')
 
         for (Building building: handler.buildings) {
+            if (building.geom.isEmpty()) {
+                continue;
+            }
             sql.execute("INSERT INTO " + tableName + " VALUES (" + building.id + ", ST_MakeValid(ST_SIMPLIFYPRESERVETOPOLOGY(ST_Transform(ST_GeomFromText('" + building.geom + "', 4326), "+srid+"),0.1)), " + building.height + ")")
         }
 
@@ -246,7 +261,11 @@ def exec(Connection connection, input) {
 
     if (!ignoreRoads) {
         sql.execute("DROP TABLE IF EXISTS ROADS")
-        sql.execute("create table ROADS (PK serial, ID_WAY integer, THE_GEOM geometry, TYPE varchar, LV_D integer, LV_E integer,LV_N integer,HV_D integer,HV_E integer,HV_N integer,LV_SPD_D integer,LV_SPD_E integer,LV_SPD_N integer,HV_SPD_D integer, HV_SPD_E integer,HV_SPD_N integer, PVMT varchar(10));")
+        sql.execute("create table ROADS (" +
+                "PK serial, ID_WAY integer, THE_GEOM geometry, TYPE varchar, LANES integer, ONEWAY boolean," +
+                "LV_D integer, LV_E integer,LV_N integer,HV_D integer,HV_E integer,HV_N integer," +
+                "LV_SPD_D integer,LV_SPD_E integer,LV_SPD_N integer,HV_SPD_D integer, HV_SPD_E integer,HV_SPD_N integer, " +
+                "PVMT varchar(10));")
 
         for (Road road: handler.roads) {
             if (road.geom.isEmpty() || road.category == 7) {
@@ -255,6 +274,8 @@ def exec(Connection connection, input) {
             String query = 'INSERT INTO ROADS(ID_WAY, ' +
                     'THE_GEOM, ' +
                     'TYPE, ' +
+                    'LANES, ' +
+                    'ONEWAY, ' +
                     'LV_D, LV_E, LV_N, ' +
                     'HV_D, HV_E, HV_N, ' +
                     'LV_SPD_D, LV_SPD_E, LV_SPD_N, ' +
@@ -262,8 +283,8 @@ def exec(Connection connection, input) {
                     'PVMT) ' +
                     ' VALUES (?,' +
                     'st_setsrid(st_updatez(ST_precisionreducer(ST_SIMPLIFYPRESERVETOPOLOGY(ST_TRANSFORM(ST_GeomFromText(?, 4326), '+srid+'),0.1),1), 0.05), ' + srid + '),' +
-                    '?,?,?,?,?,?,?,?,?,?,?,?,?,?);'
-            sql.execute(query, [road.id, road.geom, road.type,
+                    '?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);'
+            sql.execute(query, [road.id, road.geom, road.type, road.lanes, road.oneway,
                     road.getNbLV("d"), road.getNbLV("e"), road.getNbLV("n"),
                     road.getNbHV("d"), road.getNbHV("e"), road.getNbHV("n"),
                     Road.speed[road.category], Road.speed[road.category], Road.speed[road.category],
@@ -334,13 +355,15 @@ public class OsmHandler implements Sink {
     boolean ignoreRoads
     boolean ignoreGround
     boolean removeTunnels
+    Geometry fence = null
 
-    OsmHandler(Logger logger, boolean ignoreBuildings, boolean ignoreRoads, boolean ignoreGround, boolean removeTunnels) {
+    OsmHandler(Logger logger, boolean ignoreBuildings, boolean ignoreRoads, boolean ignoreGround, boolean removeTunnels, Geometry fence) {
         this.logger = logger
         this.ignoreBuildings = ignoreBuildings
         this.ignoreRoads = ignoreRoads
         this.ignoreGround = ignoreGround
         this.removeTunnels = removeTunnels
+        this.fence = fence
     }
 
     @Override
@@ -374,7 +397,11 @@ public class OsmHandler implements Sink {
                 }
                 if (isBuilding) {
                     if (!trueHeightFound && "building:levels".equalsIgnoreCase(tag.getKey())) {
-                        height = height - 4 + Double.parseDouble(tag.getValue().replaceAll("[^0-9]+", "")) * 3.0;
+                        String value_string = tag.getValue().replaceAll("[^0-9]+", "")
+                        try {
+                            height = height - 4 + Double.parseDouble(value_string) * 3.0;
+                        }
+                        catch (Exception e) { }
                     }
                     if ("height".equalsIgnoreCase(tag.getKey())) {
                         height = Double.parseDouble(tag.getValue().replaceAll("[^0-9]+", ""));
@@ -464,12 +491,13 @@ public class OsmHandler implements Sink {
 
     public Geometry calculateBuildingGeometry(Way way) {
         GeometryFactory geomFactory = new GeometryFactory();
+        Geometry geom = geomFactory.createPolygon();
         if (way == null) {
-            return geomFactory.createPolygon();
+            return geom
         }
         List<WayNode> wayNodes = way.getWayNodes();
         if (wayNodes.size() < 4) {
-            return geomFactory.createPolygon();
+            return geom
         }
         Coordinate[] shell = new Coordinate[wayNodes.size()];
         for(int i = 0; i < wayNodes.size(); i++) {
@@ -478,7 +506,11 @@ public class OsmHandler implements Sink {
             double y = node.getLatitude();
             shell[i] = new Coordinate(x, y, 0.0);
         }
-        return geomFactory.createPolygon(shell);
+        geom = geomFactory.createPolygon(shell);
+        if (fence != null && !fence.getEnvelopeInternal().contains(geom.getEnvelopeInternal())) {
+            geom = geomFactory.createPolygon();
+        }
+        return geom
     }
 
     public Geometry calculateRoadGeometry(Way way) {
@@ -497,7 +529,11 @@ public class OsmHandler implements Sink {
             double y = node.getLatitude();
             coordinates[i] = new Coordinate(x, y, 0.0);
         }
-        return geomFactory.createLineString(coordinates);
+        Geometry geom = geomFactory.createLineString(coordinates);
+        if (fence != null && !fence.getEnvelopeInternal().contains(geom.getEnvelopeInternal())) {
+            geom = geomFactory.createLineString();
+        }
+        return geom;
     }
 
     public Geometry calculateGroundGeometry(Way way) {
@@ -516,7 +552,11 @@ public class OsmHandler implements Sink {
             double y = node.getLatitude();
             shell[i] = new Coordinate(x, y, 0.0);
         }
-        return geomFactory.createPolygon(shell);
+        Geometry geom = geomFactory.createPolygon(shell);
+        if (fence != null && !fence.getEnvelopeInternal().contains(geom.getEnvelopeInternal())) {
+            geom = geomFactory.createPolygon();
+        }
+        return geom
     }
 }
 
@@ -579,6 +619,7 @@ public class Road {
     double maxspeed = 0.0;
     boolean oneway = false;
     String type = null;
+    Integer lanes = null;
     int category = 7;
 
     Road(Way way) {
@@ -599,7 +640,15 @@ public class Road {
             if ("highway".equalsIgnoreCase(tag.getKey())) {
                 this.type = tag.getValue();
             }
-            if ("highway".equalsIgnoreCase(tag.getKey()) && "yes".equalsIgnoreCase(tag.getValue())) {
+            if ("lanes".equalsIgnoreCase(tag.getKey())) {
+                try {
+                    this.lanes = Integer.parseInt(tag.getValue().replaceAll("[^0-9]+", ""));
+                }
+                catch (NumberFormatException e) {
+                    // in case maxspeed does not contain a numerical value
+                }
+            }
+            if ("oneway".equalsIgnoreCase(tag.getKey()) && "yes".equalsIgnoreCase(tag.getValue())) {
                 oneway = true
             }
         }
